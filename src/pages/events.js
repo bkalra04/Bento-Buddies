@@ -32,6 +32,11 @@ let selectedRating = 0;
 let currentRatingUser = null;
 let userSavedMeetups = [];
 
+// Advanced filter state
+let activeTimeFilter = 'all';
+let activeDateFilter = 'all';
+let activeSortOption = 'date';
+
 // Carousel state
 let todayScrollInterval;
 let futureScrollInterval;
@@ -647,6 +652,39 @@ function setupEventListeners() {
             window.location.href = '../maps/maps.html';
         });
     }
+
+    // Time of day filter buttons
+    const timeFilterButtons = document.querySelectorAll('.time-filter-btn');
+    timeFilterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const timeFilter = btn.dataset.time;
+            timeFilterButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTimeFilter = timeFilter;
+            applyAllFilters();
+        });
+    });
+
+    // Date range filter buttons
+    const dateFilterButtons = document.querySelectorAll('.date-filter-btn');
+    dateFilterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dateFilter = btn.dataset.date;
+            dateFilterButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeDateFilter = dateFilter;
+            applyAllFilters();
+        });
+    });
+
+    // Sort select
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', (e) => {
+            activeSortOption = e.target.value;
+            applyAllFilters();
+        });
+    }
 }
 
 // Helper functions
@@ -1247,6 +1285,83 @@ document.getElementById('ratingModal').addEventListener('click', (e) => {
         currentRatingUser = null;
     }
 });
+
+// Apply all filters (time, date, and sort)
+function applyAllFilters() {
+    let filteredMeetups = [...allMeetups];
+
+    // Apply time filter
+    if (activeTimeFilter !== 'all') {
+        filteredMeetups = filteredMeetups.filter(meetup => {
+            const time = parseInt(meetup.time.split(':')[0]);
+            switch (activeTimeFilter) {
+                case 'breakfast':
+                    return time >= 6 && time < 11;
+                case 'lunch':
+                    return time >= 11 && time < 15;
+                case 'dinner':
+                    return time >= 17 && time < 21;
+                case 'late':
+                    return time >= 21 || time < 6;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    // Apply date filter
+    if (activeDateFilter !== 'all') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        filteredMeetups = filteredMeetups.filter(meetup => {
+            const meetupDate = new Date(meetup.date);
+            meetupDate.setHours(0, 0, 0, 0);
+
+            switch (activeDateFilter) {
+                case 'today':
+                    return meetupDate.getTime() === today.getTime();
+                case 'week':
+                    const weekFromNow = new Date(today);
+                    weekFromNow.setDate(weekFromNow.getDate() + 7);
+                    return meetupDate >= today && meetupDate <= weekFromNow;
+                case 'month':
+                    const monthFromNow = new Date(today);
+                    monthFromNow.setMonth(monthFromNow.getMonth() + 1);
+                    return meetupDate >= today && meetupDate <= monthFromNow;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    // Apply sorting
+    filteredMeetups.sort((a, b) => {
+        switch (activeSortOption) {
+            case 'date':
+                if (a.date === b.date) {
+                    return a.time > b.time ? 1 : -1;
+                }
+                return a.date > b.date ? 1 : -1;
+            case 'spots':
+                const spotsA = a.maxSpots - a.attendees.length;
+                const spotsB = b.maxSpots - b.attendees.length;
+                return spotsB - spotsA;
+            case 'attendees':
+                return b.attendees.length - a.attendees.length;
+            default:
+                return 0;
+        }
+    });
+
+    // Show/hide cards based on filtered results
+    const allCards = document.querySelectorAll('.event-card');
+    allCards.forEach(card => {
+        const meetupId = card.dataset.meetupId;
+        const isInFilteredList = filteredMeetups.some(m => m.id === meetupId);
+        card.style.display = isInFilteredList ? 'block' : 'none';
+    });
+}
 
 // Toggle save/unsave meetup
 async function toggleSaveMeetup(meetupId, iconElement) {

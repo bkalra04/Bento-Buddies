@@ -52,6 +52,45 @@
             </div>
         </div>
 
+        <!-- Advanced Filters Section -->
+        <div class="filter-section advanced-filters-section">
+            <h3 class="filter-title">🔍 Advanced Filters</h3>
+            <div class="advanced-filters">
+                <!-- Time of Day Filter -->
+                <div class="filter-group">
+                    <label>Time of Day:</label>
+                    <div class="time-filters">
+                        <button class="time-filter-btn active" data-time="all">All</button>
+                        <button class="time-filter-btn" data-time="breakfast">🌅 Breakfast (6-11am)</button>
+                        <button class="time-filter-btn" data-time="lunch">☀️ Lunch (11am-3pm)</button>
+                        <button class="time-filter-btn" data-time="dinner">🌙 Dinner (5-9pm)</button>
+                        <button class="time-filter-btn" data-time="late">🌃 Late Night (9pm+)</button>
+                    </div>
+                </div>
+
+                <!-- Date Range Filter -->
+                <div class="filter-group">
+                    <label>Date Range:</label>
+                    <div class="date-filters">
+                        <button class="date-filter-btn active" data-date="all">All</button>
+                        <button class="date-filter-btn" data-date="today">Today</button>
+                        <button class="date-filter-btn" data-date="week">This Week</button>
+                        <button class="date-filter-btn" data-date="month">This Month</button>
+                    </div>
+                </div>
+
+                <!-- Sort Options -->
+                <div class="filter-group">
+                    <label>Sort By:</label>
+                    <select class="sort-select" id="sortSelect">
+                        <option value="date">Date (Soonest First)</option>
+                        <option value="spots">Most Spots Available</option>
+                        <option value="attendees">Most Attendees</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <!-- Happening Today Section -->
         <div class="events-section">
             <h2>Happening Today</h2>
