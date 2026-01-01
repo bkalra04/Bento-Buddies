@@ -3,6 +3,7 @@ import { db } from '../../firebase-config.js';
 import { getAllUsers } from '../services/user.service.js';
 import { getMeetups } from '../services/meetup.service.js';
 import { requireAuth } from '../services/auth.service.js';
+import { initializeMessaging, requestNotificationPermission } from '../services/notification.service.js';
 
 let currentUser = null;
 
@@ -11,10 +12,37 @@ async function init() {
     try {
         currentUser = await requireAuth();
         await loadDashboardData();
+
+        // Initialize notifications after user is authenticated
+        await initializeNotifications();
     } catch (error) {
         console.error('Error:', error);
         // Allow viewing home page even without login
         loadDashboardData();
+    }
+}
+
+// Initialize notifications
+async function initializeNotifications() {
+    try {
+        // Initialize Firebase Messaging
+        await initializeMessaging();
+
+        // Check if we should request permission
+        if (Notification.permission === 'default') {
+            // Show a subtle prompt first time
+            const shouldRequest = confirm('Enable notifications to get updates about new messages and meetup joins?');
+
+            if (shouldRequest) {
+                await requestNotificationPermission(currentUser.uid);
+            }
+        } else if (Notification.permission === 'granted') {
+            // Silently refresh token
+            await requestNotificationPermission(currentUser.uid);
+        }
+    } catch (error) {
+        console.error('Error initializing notifications:', error);
+        // Don't block the app if notifications fail
     }
 }
 

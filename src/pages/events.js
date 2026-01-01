@@ -17,6 +17,7 @@ import {
     getRateableAttendees
 } from '../services/rating.service.js';
 import { getUserProfile } from '../services/user.service.js';
+import { notifyMeetupJoin } from '../services/notification.service.js';
 import { requireAuth } from '../services/auth.service.js';
 import { showError, showSuccess, showLoading, hideLoading } from '../utils/error-handler.js';
 import { formatDate, formatTime, isToday, getTodayDate } from '../utils/date-helpers.js';
@@ -453,6 +454,10 @@ async function handleJoinMeetup(meetupId) {
                         notificationText
                     );
                     console.log('Message send result:', messageResult);
+
+                    // Trigger browser notification for meetup creator (if they have the tab open)
+                    // Note: For production, this would be sent via Cloud Functions to the creator's FCM token
+                    notifyMeetupJoin(userName, meetup.restaurantName);
 
                     showSuccess('Successfully joined! You can now message the organizer in the Messages tab.');
                 } else {
