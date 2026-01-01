@@ -652,6 +652,13 @@ nav a {
     color: white;
 }
 
+.status-badge.recurring {
+    background: rgba(103, 58, 183, 0.9);
+    color: white;
+    top: 45px;
+    font-size: 11px;
+}
+
 .event-footer {
     display: flex;
     justify-content: space-between;

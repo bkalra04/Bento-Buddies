@@ -299,6 +299,34 @@
                 </div>
             </div>
 
+            <!-- Recurring Meetup Options -->
+            <div class="form-group">
+                <label class="input-label" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="recurringToggle" style="width: auto; margin: 0;">
+                    <span>🔁 Make this a recurring meetup</span>
+                </label>
+            </div>
+
+            <div id="recurringOptions" style="display: none;">
+                <div class="form-group">
+                    <label class="input-label">Frequency</label>
+                    <select id="recurringFrequency" class="time-select" style="width: 100%; padding: 10px;">
+                        <option value="daily">Daily</option>
+                        <option value="weekly" selected>Weekly</option>
+                        <option value="biweekly">Bi-weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="input-label">Number of Occurrences</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="recurringCount" placeholder="e.g., 4" min="2" max="12" value="4">
+                        <span class="spots-hint">How many times should this meetup repeat? (Max 12)</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="modal-buttons">
                 <button class="modal-btn create-btn" id="confirmBtn">Create Meetup</button>
             </div>

@@ -181,6 +181,12 @@ function createMeetupCard(meetup, originalIndex, carouselId) {
         statusBadge = '<div class="status-badge full">Full</div>';
     }
 
+    // Recurring badge
+    let recurringBadge = '';
+    if (meetup.isRecurring) {
+        recurringBadge = `<div class="status-badge recurring">🔁 Recurring ${meetup.seriesIndex + 1}/${meetup.seriesTotal}</div>`;
+    }
+
     // Dietary icons
     const dietaryIcons = {
         'vegetarian': '🥗',
@@ -213,6 +219,7 @@ function createMeetupCard(meetup, originalIndex, carouselId) {
             <span class="spots-left ${isFull ? 'full' : ''}">${isFull ? 'Full' : `${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`}</span>
         </div>
         ${statusBadge}
+        ${recurringBadge}
     `;
 
     card.appendChild(imageContainer);

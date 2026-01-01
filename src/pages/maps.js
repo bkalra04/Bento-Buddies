@@ -335,6 +335,16 @@ document.getElementById('createMeetupBtn').addEventListener('click', () => {
     document.querySelectorAll('.input-wrapper').forEach(wrapper => wrapper.classList.remove('error'));
 });
 
+// Recurring meetup toggle
+document.getElementById('recurringToggle').addEventListener('change', (e) => {
+    const recurringOptions = document.getElementById('recurringOptions');
+    if (e.target.checked) {
+        recurringOptions.style.display = 'block';
+    } else {
+        recurringOptions.style.display = 'none';
+    }
+});
+
 // Close modal
 document.getElementById('meetupModal').addEventListener('click', (e) => {
     if (e.target.id === 'meetupModal') {
@@ -362,8 +372,36 @@ function clearFormNew() {
     if (photoInput) photoInput.value = '';
     if (photoPreview) photoPreview.style.display = 'none';
 
+    // Clear recurring options
+    document.getElementById('recurringToggle').checked = false;
+    document.getElementById('recurringOptions').style.display = 'none';
+    document.getElementById('recurringFrequency').value = 'weekly';
+    document.getElementById('recurringCount').value = '4';
+
     document.querySelectorAll('.error-icon').forEach(icon => icon.classList.remove('show'));
     document.querySelectorAll('.input-wrapper').forEach(wrapper => wrapper.classList.remove('error'));
+}
+
+// Calculate date for recurring meetup
+function calculateRecurringDate(startDate, frequency, index) {
+    const date = new Date(startDate);
+
+    switch (frequency) {
+        case 'daily':
+            date.setDate(date.getDate() + index);
+            break;
+        case 'weekly':
+            date.setDate(date.getDate() + (index * 7));
+            break;
+        case 'biweekly':
+            date.setDate(date.getDate() + (index * 14));
+            break;
+        case 'monthly':
+            date.setMonth(date.getMonth() + index);
+            break;
+    }
+
+    return date.toISOString().split('T')[0];
 }
 
 // Confirm Button - CREATE MEETUP WITH FIRESTORE
@@ -468,27 +506,63 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
             userPhoto: userPhotoURL || '' // Add user-uploaded photo
         };
 
-        // Create meetup using service
-        const result = await createMeetup(meetupData, currentUser);
+        // Check if recurring
+        const isRecurring = document.getElementById('recurringToggle').checked;
 
-        hideLoading();
+        if (isRecurring) {
+            const frequency = document.getElementById('recurringFrequency').value;
+            const count = parseInt(document.getElementById('recurringCount').value) || 4;
 
-        if (result.success) {
-            // Success!
-            document.getElementById('meetupModal').classList.remove('active');
-            document.getElementById('successPopup').classList.add('active');
+            // Generate series ID for recurring meetups
+            const seriesId = `series_${Date.now()}`;
 
-            // Auto-hide success popup
-            setTimeout(() => {
-                document.getElementById('successPopup').classList.remove('active');
-                clearFormNew();
-            }, 2500);
+            // Create multiple meetup instances
+            const meetupPromises = [];
+            for (let i = 0; i < count; i++) {
+                const instanceDate = calculateRecurringDate(date, frequency, i);
+                const instanceData = {
+                    ...meetupData,
+                    date: instanceDate,
+                    isRecurring: true,
+                    seriesId: seriesId,
+                    seriesIndex: i,
+                    seriesTotal: count
+                };
+                meetupPromises.push(createMeetup(instanceData, currentUser));
+            }
 
-            showSuccess('Meetup created successfully!');
+            const results = await Promise.all(meetupPromises);
+            hideLoading();
 
-            console.log('Meetup created with ID:', result.id);
+            const successCount = results.filter(r => r.success).length;
+            if (successCount > 0) {
+                document.getElementById('meetupModal').classList.remove('active');
+                document.getElementById('successPopup').classList.add('active');
+                setTimeout(() => {
+                    document.getElementById('successPopup').classList.remove('active');
+                    clearFormNew();
+                }, 2500);
+                showSuccess(`Created ${successCount} recurring meetups successfully!`);
+            } else {
+                showError('Failed to create recurring meetups');
+            }
         } else {
-            showError(result.error || 'Failed to create meetup');
+            // Create single meetup
+            const result = await createMeetup(meetupData, currentUser);
+            hideLoading();
+
+            if (result.success) {
+                document.getElementById('meetupModal').classList.remove('active');
+                document.getElementById('successPopup').classList.add('active');
+                setTimeout(() => {
+                    document.getElementById('successPopup').classList.remove('active');
+                    clearFormNew();
+                }, 2500);
+                showSuccess('Meetup created successfully!');
+                console.log('Meetup created with ID:', result.id);
+            } else {
+                showError(result.error || 'Failed to create meetup');
+            }
         }
     } catch (error) {
         hideLoading();
