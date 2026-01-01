@@ -1,11 +1,22 @@
 // Events Page - Real Meetups from Firestore
-import { auth } from '../../firebase-config.js';
+import { auth, storage, ref, uploadBytes, getDownloadURL } from '../../firebase-config.js';
 import {
     onMeetupsChange,
     joinMeetup,
     leaveMeetup,
     getMeetup
 } from '../services/meetup.service.js';
+import {
+    getOrCreateConversation,
+    sendMessage,
+    sendGroupMessage,
+    onGroupMessagesChange
+} from '../services/message.service.js';
+import {
+    submitRating,
+    getRateableAttendees
+} from '../services/rating.service.js';
+import { getUserProfile } from '../services/user.service.js';
 import { requireAuth } from '../services/auth.service.js';
 import { showError, showSuccess, showLoading, hideLoading } from '../utils/error-handler.js';
 import { formatDate, formatTime, isToday, getTodayDate } from '../utils/date-helpers.js';
@@ -14,6 +25,10 @@ let currentUser = null;
 let allMeetups = [];
 let unsubscribeMeetups = null;
 let selectedMeetup = null;
+let unsubscribeGroupChat = null;
+let selectedGroupChatPhoto = null;
+let selectedRating = 0;
+let currentRatingUser = null;
 
 // Carousel state
 let todayScrollInterval;
@@ -49,24 +64,28 @@ function loadMeetups() {
     // Real-time listener for meetups (no filters - filter in JS to avoid index requirement)
     unsubscribeMeetups = onMeetupsChange((meetups) => {
         // Filter out cancelled meetups
-        allMeetups = meetups.filter(m => m.status === 'open' || m.status === 'full');
+        allMeetups = meetups.filter(m => m.status === 'open' || m.status === 'full' || m.status === 'completed');
 
-        // Separate into today and future
+        // Separate into today, future, and past
         const today = getTodayDate();
-        const todayMeetups = allMeetups.filter(m => m.date === today);
-        const futureMeetups = allMeetups.filter(m => m.date > today);
+        const todayMeetups = allMeetups.filter(m => m.date === today && m.status !== 'completed');
+        const futureMeetups = allMeetups.filter(m => m.date > today && m.status !== 'completed');
+        const pastMeetups = allMeetups.filter(m => m.date < today || m.status === 'completed');
 
         console.log('Today:', today);
         console.log('All meetups:', allMeetups.length);
         console.log('Today meetups:', todayMeetups.length);
         console.log('Future meetups:', futureMeetups.length);
+        console.log('Past meetups:', pastMeetups.length);
 
         renderEvents(todayMeetups, 'todayCarousel');
         renderEvents(futureMeetups, 'futureCarousel');
+        renderEvents(pastMeetups, 'pastCarousel');
 
         // Start carousels
         startCarousel('todayCarousel');
         startCarousel('futureCarousel');
+        startCarousel('pastCarousel');
     });
 }
 
@@ -118,7 +137,8 @@ function createMeetupCard(meetup, originalIndex, carouselId) {
     imageContainer.className = 'event-image';
 
     const imgElement = document.createElement('img');
-    imgElement.src = meetup.restaurantPhoto || '../Images/placeholder.png';
+    // Prioritize user-uploaded photo, then restaurant photo, then placeholder
+    imgElement.src = meetup.userPhoto || meetup.restaurantPhoto || '../Images/placeholder.png';
     imgElement.alt = meetup.restaurantName;
     imgElement.style.width = '100%';
     imgElement.style.height = '100%';
@@ -133,11 +153,30 @@ function createMeetupCard(meetup, originalIndex, carouselId) {
         statusBadge = '<div class="status-badge full">Full</div>';
     }
 
+    // Dietary icons
+    const dietaryIcons = {
+        'vegetarian': '🥗',
+        'vegan': '🌱',
+        'halal': '☪️',
+        'kosher': '✡️',
+        'gluten-free': '🌾',
+        'dairy-free': '🥛',
+        'nut-allergy': '🥜',
+        'pescatarian': '🐟'
+    };
+
+    let dietaryHTML = '';
+    if (meetup.dietaryPreferences && meetup.dietaryPreferences.length > 0) {
+        const icons = meetup.dietaryPreferences.map(pref => dietaryIcons[pref] || '').join(' ');
+        dietaryHTML = `<div class="dietary-icons">${icons}</div>`;
+    }
+
     // Event info
     const eventInfo = document.createElement('div');
     eventInfo.className = 'event-info';
     eventInfo.innerHTML = `
         <h3>${meetup.restaurantName}</h3>
+        ${dietaryHTML}
         <p>${formatTime(meetup.time)}</p>
         <div class="event-footer">
             <div class="attendees-preview">
@@ -232,7 +271,8 @@ function showMeetupDetails(meetup) {
     const modalTime = document.getElementById('modalTime');
     const modalLocation = document.getElementById('modalLocation');
 
-    modalImage.src = meetup.restaurantPhoto || '../Images/placeholder.png';
+    // Prioritize user-uploaded photo, then restaurant photo, then placeholder
+    modalImage.src = meetup.userPhoto || meetup.restaurantPhoto || '../Images/placeholder.png';
     modalTitle.textContent = meetup.restaurantName;
     modalDate.textContent = formatDate(meetup.date);
     modalTime.textContent = formatTime(meetup.time);
@@ -324,6 +364,55 @@ function showMeetupDetails(meetup) {
         modalDetails.appendChild(btnContainer);
     }
 
+    // Add "Rate Attendees" button for past meetups
+    const meetupDate = new Date(meetup.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isPastMeetup = meetupDate < today;
+
+    // Remove existing rate button if present
+    const existingRateBtn = document.getElementById('rateAttendeesBtn');
+    if (existingRateBtn) existingRateBtn.remove();
+
+    if (isPastMeetup && isUserAttending) {
+        const rateBtnContainer = document.createElement('div');
+        rateBtnContainer.style.cssText = 'margin-top: 15px;';
+
+        const rateBtn = document.createElement('button');
+        rateBtn.id = 'rateAttendeesBtn';
+        rateBtn.textContent = '⭐ Rate Attendees';
+        rateBtn.style.cssText = `
+            width: 100%;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        `;
+        rateBtn.onclick = () => showRateAttendeesModal(meetup);
+
+        rateBtnContainer.appendChild(rateBtn);
+        modalDetails.appendChild(rateBtnContainer);
+    }
+
+    // Show/hide group chat section
+    const groupChatSection = document.getElementById('groupChatSection');
+    if (isUserAttending) {
+        groupChatSection.style.display = 'block';
+        loadGroupChat(meetup.id);
+    } else {
+        groupChatSection.style.display = 'none';
+        // Unsubscribe from group chat if not attending
+        if (unsubscribeGroupChat) {
+            unsubscribeGroupChat();
+            unsubscribeGroupChat = null;
+        }
+    }
+
     eventModal.style.display = 'block';
 }
 
@@ -336,12 +425,47 @@ async function handleJoinMeetup(meetupId) {
     hideLoading();
 
     if (result.success) {
-        showSuccess('Successfully joined the meetup!');
-
-        // Refresh meetup details
+        // Get updated meetup details
         const updated = await getMeetup(meetupId);
+
         if (updated.success) {
-            showMeetupDetails(updated.data);
+            const meetup = updated.data;
+
+            // Auto-create conversation with meetup creator and send notification
+            if (meetup.createdBy !== currentUser.uid) {
+                console.log('Creating conversation between:', currentUser.uid, 'and', meetup.createdBy);
+                const conversationResult = await getOrCreateConversation(currentUser.uid, meetup.createdBy);
+                console.log('Conversation result:', conversationResult);
+
+                if (conversationResult.success) {
+                    // Get current user's profile to get their name
+                    const userProfileResult = await getUserProfile(currentUser.uid);
+                    const userName = userProfileResult.success ? userProfileResult.data.name : 'Someone';
+
+                    // Send automatic notification message from joiner's perspective
+                    const notificationText = `Hi! I just joined your meetup at ${meetup.restaurantName} on ${formatDate(meetup.date)} at ${formatTime(meetup.time)}! 🎉 Looking forward to it!`;
+
+                    console.log('Sending notification message to conversation:', conversationResult.id);
+                    const messageResult = await sendMessage(
+                        conversationResult.id,
+                        currentUser.uid,
+                        userName,
+                        notificationText
+                    );
+                    console.log('Message send result:', messageResult);
+
+                    showSuccess('Successfully joined! You can now message the organizer in the Messages tab.');
+                } else {
+                    console.error('Failed to create conversation:', conversationResult.error);
+                    showSuccess('Successfully joined the meetup!');
+                }
+            } else {
+                showSuccess('Successfully joined the meetup!');
+            }
+
+            showMeetupDetails(meetup);
+        } else {
+            showSuccess('Successfully joined the meetup!');
         }
     } else {
         showError(result.error || 'Failed to join meetup');
@@ -356,20 +480,41 @@ async function handleLeaveMeetup(meetupId) {
 
     showLoading('Leaving meetup...');
 
+    // Get meetup details before leaving
+    const meetupResult = await getMeetup(meetupId);
+    const meetup = meetupResult.success ? meetupResult.data : null;
+
     const result = await leaveMeetup(meetupId, currentUser);
 
     hideLoading();
 
     if (result.success) {
+        // Send leave notification if there's a conversation with the creator
+        if (meetup && meetup.createdBy !== currentUser.uid) {
+            const conversationResult = await getOrCreateConversation(currentUser.uid, meetup.createdBy);
+
+            if (conversationResult.success) {
+                const userProfileResult = await getUserProfile(currentUser.uid);
+                const userName = userProfileResult.success ? userProfileResult.data.name : 'Someone';
+
+                const leaveNotification = `I had to leave the meetup at ${meetup.restaurantName} on ${formatDate(meetup.date)} at ${formatTime(meetup.time)}. Sorry about that!`;
+
+                await sendMessage(
+                    conversationResult.id,
+                    currentUser.uid,
+                    userName,
+                    leaveNotification
+                );
+            }
+        }
+
         showSuccess('Successfully left the meetup');
 
-        // Refresh meetup details
-        const updated = await getMeetup(meetupId);
-        if (updated.success) {
-            showMeetupDetails(updated.data);
-        } else {
-            eventModal.style.display = 'none';
-        }
+        // Close the modal after leaving
+        eventModal.style.display = 'none';
+        selectedMeetup = null;
+
+        // Real-time listener will automatically update the cards
     } else {
         showError(result.error || 'Failed to leave meetup');
     }
@@ -410,6 +555,15 @@ function startCarousel(carouselId) {
 
 // Search functionality
 function setupEventListeners() {
+    // Search emoji click to focus input
+    const searchIcon = document.querySelector('.search-icon');
+    if (searchIcon) {
+        searchIcon.style.cursor = 'pointer';
+        searchIcon.addEventListener('click', () => {
+            searchInput.focus();
+        });
+    }
+
     searchInput.addEventListener('input', (e) => {
         const searchTerm = e.target.value.toLowerCase();
         const allCards = document.querySelectorAll('.event-card');
@@ -423,6 +577,28 @@ function setupEventListeners() {
             } else {
                 card.style.display = 'none';
             }
+        });
+    });
+
+    // Dietary filter buttons
+    const filterButtons = document.querySelectorAll('.dietary-filter-btn');
+    let activeFilter = 'all';
+
+    // Set "All" as active by default
+    const allBtn = document.querySelector('.dietary-filter-btn[data-filter="all"]');
+    if (allBtn) allBtn.classList.add('active');
+
+    filterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const filter = btn.dataset.filter;
+
+            // Update active state
+            filterButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeFilter = filter;
+
+            // Filter meetups
+            filterMeetupsByDietary(filter);
         });
     });
 
@@ -466,9 +642,583 @@ function getGradientForName(name) {
     return gradients[name.charCodeAt(0) % gradients.length];
 }
 
+// Filter meetups by dietary preferences
+function filterMeetupsByDietary(filter) {
+    const allCards = document.querySelectorAll('.event-card');
+
+    allCards.forEach(card => {
+        const meetupId = card.dataset.meetupId;
+        const meetup = allMeetups.find(m => m.id === meetupId);
+
+        if (!meetup) {
+            card.style.display = 'none';
+            return;
+        }
+
+        // Show all if filter is "all"
+        if (filter === 'all') {
+            card.style.display = 'block';
+            return;
+        }
+
+        // Check if meetup has the selected dietary preference
+        const hasDietaryPreference = meetup.dietaryPreferences &&
+                                     meetup.dietaryPreferences.includes(filter);
+
+        card.style.display = hasDietaryPreference ? 'block' : 'none';
+    });
+}
+
+// Load group chat for a meetup
+function loadGroupChat(meetupId) {
+    // Unsubscribe from previous chat
+    if (unsubscribeGroupChat) {
+        unsubscribeGroupChat();
+    }
+
+    const groupChatMessages = document.getElementById('groupChatMessages');
+    groupChatMessages.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Loading messages...</p>';
+
+    // Real-time listener for group messages
+    unsubscribeGroupChat = onGroupMessagesChange(meetupId, (messages) => {
+        renderGroupMessages(messages);
+    });
+}
+
+// Render group chat messages
+function renderGroupMessages(messages) {
+    const groupChatMessages = document.getElementById('groupChatMessages');
+    groupChatMessages.innerHTML = '';
+
+    if (messages.length === 0) {
+        groupChatMessages.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No messages yet. Start the conversation!</p>';
+        return;
+    }
+
+    messages.forEach(msg => {
+        const isCurrentUser = msg.senderId === currentUser.uid;
+        const messageDiv = document.createElement('div');
+        messageDiv.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: ${isCurrentUser ? 'flex-end' : 'flex-start'};
+            margin-bottom: 15px;
+        `;
+
+        // Avatar and name for other users
+        let avatarHTML = '';
+        if (!isCurrentUser) {
+            const initials = getInitials(msg.senderName);
+            const gradient = getGradientForName(msg.senderName);
+
+            if (msg.senderPicture) {
+                avatarHTML = `
+                    <img src="${msg.senderPicture}"
+                         style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; margin-right: 8px;">
+                `;
+            } else {
+                avatarHTML = `
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: ${gradient}; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600; margin-right: 8px;">
+                        ${initials}
+                    </div>
+                `;
+            }
+        }
+
+        // Photo HTML
+        let photoHTML = '';
+        if (msg.photoURL) {
+            photoHTML = `<img src="${msg.photoURL}"
+                             style="max-width: 250px; border-radius: 12px; margin-top: 8px; cursor: pointer; transition: transform 0.2s;"
+                             onclick="showPhotoViewer('${msg.photoURL}')">`;
+        }
+
+        messageDiv.innerHTML = `
+            <div style="display: flex; align-items: flex-end; ${isCurrentUser ? 'flex-direction: row-reverse;' : ''}; max-width: 70%;">
+                ${avatarHTML}
+                <div>
+                    ${!isCurrentUser ? `<span style="font-size: 12px; color: #666; margin-left: ${msg.senderPicture ? '36px' : '36px'};">${msg.senderName}</span>` : ''}
+                    ${photoHTML}
+                    ${msg.text ? `<div style="
+                        background: ${isCurrentUser ? '#f0f0f0' : '#FFD4E0'};
+                        padding: 10px 15px;
+                        border-radius: 18px;
+                        margin-top: 4px;
+                    ">
+                        <p style="margin: 0; font-size: 14px;">${escapeHtml(msg.text)}</p>
+                    </div>` : ''}
+                    <span style="font-size: 11px; color: #999; margin-top: 4px; display: block; ${isCurrentUser ? 'margin-right: 10px;' : 'margin-left: 10px;'}">
+                        ${msg.timestamp ? getRelativeTime(msg.timestamp) : 'Just now'}
+                    </span>
+                </div>
+            </div>
+        `;
+
+        groupChatMessages.appendChild(messageDiv);
+    });
+
+    // Scroll to bottom
+    groupChatMessages.scrollTop = groupChatMessages.scrollHeight;
+}
+
+// Handle sending group message
+async function handleSendGroupMessage() {
+    const groupChatInput = document.getElementById('groupChatInput');
+    const text = groupChatInput.value.trim();
+    const hasPhoto = selectedGroupChatPhoto !== null;
+
+    if (!text && !hasPhoto) return;
+    if (!selectedMeetup) return;
+
+    // Clear input immediately
+    const originalText = text;
+    const originalPhoto = selectedGroupChatPhoto;
+    groupChatInput.value = '';
+    selectedGroupChatPhoto = null;
+    const groupChatPhotoPreview = document.getElementById('groupChatPhotoPreview');
+    const groupChatPhotoInput = document.getElementById('groupChatPhotoInput');
+    groupChatPhotoPreview.style.display = 'none';
+    groupChatPhotoInput.value = '';
+
+    try {
+        let photoURL = null;
+
+        // Upload photo if selected
+        if (hasPhoto) {
+            const fileName = `groupChats/${selectedMeetup.id}/${Date.now()}_${originalPhoto.name}`;
+            const storageRef = ref(storage, fileName);
+            await uploadBytes(storageRef, originalPhoto);
+            photoURL = await getDownloadURL(storageRef);
+        }
+
+        const result = await sendGroupMessage(
+            selectedMeetup.id,
+            currentUser.uid,
+            currentUser.displayName || 'You',
+            currentUser.photoURL || '',
+            text || '📷 Photo',
+            photoURL
+        );
+
+        if (!result.success) {
+            showError(result.error || 'Failed to send message');
+            // Restore message if send failed
+            groupChatInput.value = originalText;
+            selectedGroupChatPhoto = originalPhoto;
+        }
+    } catch (error) {
+        console.error('Error sending group message:', error);
+        showError('Failed to send message');
+        groupChatInput.value = originalText;
+        selectedGroupChatPhoto = originalPhoto;
+    }
+}
+
+// Group chat photo upload handlers
+const groupChatPhotoBtn = document.getElementById('groupChatPhotoBtn');
+const groupChatPhotoInput = document.getElementById('groupChatPhotoInput');
+const groupChatPhotoPreview = document.getElementById('groupChatPhotoPreview');
+const groupChatPreviewImage = document.getElementById('groupChatPreviewImage');
+const removeGroupChatPhotoBtn = document.getElementById('removeGroupChatPhotoBtn');
+
+if (groupChatPhotoBtn) {
+    groupChatPhotoBtn.addEventListener('click', () => {
+        groupChatPhotoInput.click();
+    });
+}
+
+if (groupChatPhotoInput) {
+    groupChatPhotoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            showError('Please select an image file');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            showError('Image must be less than 5MB');
+            return;
+        }
+
+        try {
+            const compressedFile = await compressImage(file);
+            selectedGroupChatPhoto = compressedFile;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                groupChatPreviewImage.src = e.target.result;
+                groupChatPhotoPreview.style.display = 'block';
+            };
+            reader.readAsDataURL(compressedFile);
+        } catch (error) {
+            console.error('Error processing image:', error);
+            showError('Failed to process image');
+        }
+    });
+}
+
+if (removeGroupChatPhotoBtn) {
+    removeGroupChatPhotoBtn.addEventListener('click', () => {
+        selectedGroupChatPhoto = null;
+        groupChatPhotoInput.value = '';
+        groupChatPhotoPreview.style.display = 'none';
+        groupChatPreviewImage.src = '';
+    });
+}
+
+// Group chat send button
+const groupChatSendBtn = document.getElementById('groupChatSendBtn');
+if (groupChatSendBtn) {
+    groupChatSendBtn.addEventListener('click', handleSendGroupMessage);
+}
+
+// Group chat input enter key
+const groupChatInput = document.getElementById('groupChatInput');
+if (groupChatInput) {
+    groupChatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendGroupMessage();
+        }
+    });
+}
+
+// Image compression function (reused from messages)
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                const maxWidth = 1200;
+                const maxHeight = 1200;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = height * (maxWidth / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = width * (maxHeight / height);
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        }));
+                    } else {
+                        reject(new Error('Canvas to Blob conversion failed'));
+                    }
+                }, 'image/jpeg', 0.8);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// Photo viewer function (simple version)
+function showPhotoViewer(photoURL) {
+    let photoModal = document.getElementById('photoViewerModal');
+
+    if (!photoModal) {
+        photoModal = document.createElement('div');
+        photoModal.id = 'photoViewerModal';
+        photoModal.style.cssText = `
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+        `;
+
+        photoModal.innerHTML = `
+            <span id="closePhotoViewer" style="position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; font-weight: bold; cursor: pointer;">&times;</span>
+            <img id="photoViewerImage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; max-height: 90%; border-radius: 8px;">
+        `;
+
+        document.body.appendChild(photoModal);
+
+        photoModal.querySelector('#closePhotoViewer').addEventListener('click', () => {
+            photoModal.style.display = 'none';
+        });
+
+        photoModal.addEventListener('click', (e) => {
+            if (e.target === photoModal) {
+                photoModal.style.display = 'none';
+            }
+        });
+    }
+
+    const photoImg = photoModal.querySelector('#photoViewerImage');
+    photoImg.src = photoURL;
+    photoModal.style.display = 'block';
+}
+
+// Helper function to get relative time
+function getRelativeTime(timestamp) {
+    if (!timestamp) return 'Just now';
+
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return date.toLocaleDateString();
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Show rate attendees modal
+async function showRateAttendeesModal(meetup) {
+    showLoading('Loading attendees...');
+
+    const result = await getRateableAttendees(meetup.id, meetup.attendees, currentUser.uid);
+
+    hideLoading();
+
+    if (!result.success) {
+        showError('Failed to load attendees');
+        return;
+    }
+
+    const rateable = result.data;
+
+    if (rateable.length === 0) {
+        showSuccess('You have already rated all attendees!');
+        return;
+    }
+
+    // Create temporary modal to show attendee list
+    const listModal = document.createElement('div');
+    listModal.className = 'modal';
+    listModal.style.display = 'block';
+
+    let attendeesHTML = '';
+    rateable.forEach(attendee => {
+        const initials = getInitials(attendee.name);
+        const gradient = getGradientForName(attendee.name);
+
+        attendeesHTML += `
+            <div class="rateable-attendee" data-user-id="${attendee.userId}" data-user-name="${attendee.name}" data-user-picture="${attendee.picture || ''}"
+                 style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f8f8; border-radius: 12px; margin-bottom: 12px; cursor: pointer; transition: background 0.2s;"
+                 onmouseover="this.style.background='#ececec'" onmouseout="this.style.background='#f8f8f8'">
+                ${attendee.picture
+                    ? `<img src="${attendee.picture}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover;">`
+                    : `<div style="width: 50px; height: 50px; border-radius: 50%; background: ${gradient}; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">${initials}</div>`
+                }
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 5px 0;">${attendee.name}</h4>
+                    <p style="margin: 0; color: #666; font-size: 14px;">Click to rate</p>
+                </div>
+                <span style="font-size: 24px; color: #FFD700;">⭐</span>
+            </div>
+        `;
+    });
+
+    listModal.innerHTML = `
+        <div class="modal-content" style="max-width: 500px;">
+            <span class="close-btn" id="closeAttendeeList">&times;</span>
+            <h2 style="margin-bottom: 20px;">Rate Attendees</h2>
+            <p style="color: #666; margin-bottom: 20px;">Select an attendee to rate:</p>
+            <div style="max-height: 400px; overflow-y: auto;">
+                ${attendeesHTML}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(listModal);
+
+    // Add click handlers
+    listModal.querySelector('#closeAttendeeList').addEventListener('click', () => {
+        listModal.remove();
+    });
+
+    listModal.addEventListener('click', (e) => {
+        if (e.target === listModal) {
+            listModal.remove();
+        }
+    });
+
+    listModal.querySelectorAll('.rateable-attendee').forEach(attendee => {
+        attendee.addEventListener('click', () => {
+            const userId = attendee.dataset.userId;
+            const userName = attendee.dataset.userName;
+            const userPicture = attendee.dataset.userPicture;
+
+            listModal.remove();
+            showRatingModal(meetup, { userId, name: userName, picture: userPicture });
+        });
+    });
+}
+
+// Show rating modal for specific user
+function showRatingModal(meetup, user) {
+    currentRatingUser = user;
+    selectedRating = 0;
+
+    const ratingModal = document.getElementById('ratingModal');
+    const ratingUserInfo = document.getElementById('ratingUserInfo');
+    const ratingReview = document.getElementById('ratingReview');
+    const submitBtn = document.getElementById('submitRatingBtn');
+
+    // Reset
+    ratingReview.value = '';
+    submitBtn.disabled = true;
+    document.querySelectorAll('.star').forEach(star => {
+        star.textContent = '☆';
+        star.style.color = '#ddd';
+    });
+
+    // Show user info
+    const initials = getInitials(user.name);
+    const gradient = getGradientForName(user.name);
+
+    ratingUserInfo.innerHTML = `
+        ${user.picture
+            ? `<img src="${user.picture}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">`
+            : `<div style="width: 60px; height: 60px; border-radius: 50%; background: ${gradient}; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: 600;">${initials}</div>`
+        }
+        <div>
+            <h3 style="margin: 0 0 5px 0;">${user.name}</h3>
+            <p style="margin: 0; color: #666; font-size: 14px;">${meetup.restaurantName} • ${formatDate(meetup.date)}</p>
+        </div>
+    `;
+
+    ratingModal.style.display = 'block';
+}
+
+// Star rating handlers
+const stars = document.querySelectorAll('.star');
+const ratingText = document.getElementById('ratingText');
+const submitRatingBtn = document.getElementById('submitRatingBtn');
+
+stars.forEach(star => {
+    star.addEventListener('click', () => {
+        selectedRating = parseInt(star.dataset.rating);
+        updateStarDisplay();
+        submitRatingBtn.disabled = false;
+    });
+
+    star.addEventListener('mouseenter', () => {
+        const rating = parseInt(star.dataset.rating);
+        highlightStars(rating);
+    });
+
+    star.addEventListener('mouseleave', () => {
+        highlightStars(selectedRating);
+    });
+});
+
+function highlightStars(rating) {
+    stars.forEach(star => {
+        const starRating = parseInt(star.dataset.rating);
+        if (starRating <= rating) {
+            star.textContent = '★';
+            star.style.color = '#FFD700';
+        } else {
+            star.textContent = '☆';
+            star.style.color = '#ddd';
+        }
+    });
+
+    const ratingLabels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+    ratingText.textContent = rating > 0 ? ratingLabels[rating] : 'Select a rating';
+}
+
+function updateStarDisplay() {
+    highlightStars(selectedRating);
+}
+
+// Submit rating
+submitRatingBtn.addEventListener('click', async () => {
+    if (selectedRating === 0 || !currentRatingUser) return;
+
+    const review = document.getElementById('ratingReview').value.trim();
+
+    showLoading('Submitting rating...');
+
+    const result = await submitRating(currentRatingUser.userId, {
+        fromUserId: currentUser.uid,
+        fromUserName: currentUser.displayName || 'Anonymous',
+        fromUserPicture: currentUser.photoURL || '',
+        meetupId: selectedMeetup.id,
+        meetupName: selectedMeetup.restaurantName,
+        rating: selectedRating,
+        review: review
+    });
+
+    hideLoading();
+
+    if (result.success) {
+        showSuccess('Rating submitted successfully!');
+        document.getElementById('ratingModal').style.display = 'none';
+        selectedRating = 0;
+        currentRatingUser = null;
+    } else {
+        showError(result.error || 'Failed to submit rating');
+    }
+});
+
+// Close rating modal
+document.getElementById('closeRatingModal').addEventListener('click', () => {
+    document.getElementById('ratingModal').style.display = 'none';
+    selectedRating = 0;
+    currentRatingUser = null;
+});
+
+document.getElementById('cancelRatingBtn').addEventListener('click', () => {
+    document.getElementById('ratingModal').style.display = 'none';
+    selectedRating = 0;
+    currentRatingUser = null;
+});
+
+document.getElementById('ratingModal').addEventListener('click', (e) => {
+    if (e.target.id === 'ratingModal') {
+        document.getElementById('ratingModal').style.display = 'none';
+        selectedRating = 0;
+        currentRatingUser = null;
+    }
+});
+
 // Cleanup
 window.addEventListener('beforeunload', () => {
     if (unsubscribeMeetups) unsubscribeMeetups();
+    if (unsubscribeGroupChat) unsubscribeGroupChat();
     if (todayScrollInterval) clearInterval(todayScrollInterval);
     if (futureScrollInterval) clearInterval(futureScrollInterval);
 });

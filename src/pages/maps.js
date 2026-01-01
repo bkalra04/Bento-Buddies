@@ -1,5 +1,5 @@
 // Maps Page - Refactored with Service Layer
-import { auth } from '../../firebase-config.js';
+import { auth, storage, ref, uploadBytes, getDownloadURL } from '../../firebase-config.js';
 import { createMeetup } from '../services/meetup.service.js';
 import { requireAuth } from '../services/auth.service.js';
 import { showError, showSuccess, showLoading, hideLoading } from '../utils/error-handler.js';
@@ -12,6 +12,7 @@ let selectedPlace = null;
 let currentPlaceDetails = null;
 let markers = [];
 let currentUser = null;
+let selectedMeetupPhoto = null;
 
 // UBC campus center coordinates
 const UBC_CENTER = { lat: 49.2606, lng: -123.2460 };
@@ -349,6 +350,18 @@ function clearFormNew() {
     document.getElementById('meetupSpots').value = '';
     document.getElementById('meetupDetails').value = '';
 
+    // Clear dietary checkboxes
+    document.querySelectorAll('.dietary-checkboxes input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+
+    // Clear photo
+    selectedMeetupPhoto = null;
+    const photoInput = document.getElementById('meetupPhotoInput');
+    const photoPreview = document.getElementById('meetupPhotoPreview');
+    if (photoInput) photoInput.value = '';
+    if (photoPreview) photoPreview.style.display = 'none';
+
     document.querySelectorAll('.error-icon').forEach(icon => icon.classList.remove('show'));
     document.querySelectorAll('.input-wrapper').forEach(wrapper => wrapper.classList.remove('error'));
 }
@@ -411,10 +424,30 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
         return;
     }
 
+    // Collect dietary preferences
+    const dietaryPreferences = [];
+    document.querySelectorAll('.dietary-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
+        dietaryPreferences.push(checkbox.value);
+    });
+
     // Show loading
     showLoading('Creating meetup...');
 
     try {
+        // Upload photo if selected
+        let userPhotoURL = null;
+        if (selectedMeetupPhoto) {
+            try {
+                const fileName = `meetups/${currentUser.uid}/${Date.now()}_${selectedMeetupPhoto.name}`;
+                const storageRef = ref(storage, fileName);
+                await uploadBytes(storageRef, selectedMeetupPhoto);
+                userPhotoURL = await getDownloadURL(storageRef);
+            } catch (photoError) {
+                console.error('Error uploading photo:', photoError);
+                // Continue without photo
+            }
+        }
+
         // Prepare meetup data
         const meetupData = {
             restaurantName: selectedPlace.name,
@@ -430,7 +463,9 @@ document.getElementById('confirmBtn').addEventListener('click', async () => {
             date: date,
             time: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`,
             maxSpots: spots,
-            details: details || ''
+            details: details || '',
+            dietaryPreferences: dietaryPreferences,
+            userPhoto: userPhotoURL || '' // Add user-uploaded photo
         };
 
         // Create meetup using service
@@ -550,6 +585,116 @@ document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closePhotoViewer();
     }
 });
+
+// Meetup photo upload handlers
+const meetupPhotoBtn = document.getElementById('meetupPhotoBtn');
+const meetupPhotoInput = document.getElementById('meetupPhotoInput');
+const meetupPhotoPreview = document.getElementById('meetupPhotoPreview');
+const meetupPreviewImage = document.getElementById('meetupPreviewImage');
+const removeMeetupPhotoBtn = document.getElementById('removeMeetupPhotoBtn');
+
+if (meetupPhotoBtn) {
+    meetupPhotoBtn.addEventListener('click', () => {
+        meetupPhotoInput.click();
+    });
+}
+
+if (meetupPhotoInput) {
+    meetupPhotoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            showError('Please select an image file');
+            return;
+        }
+
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            showError('Image must be less than 5MB');
+            return;
+        }
+
+        try {
+            // Compress and preview image
+            const compressedFile = await compressImage(file);
+            selectedMeetupPhoto = compressedFile;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                meetupPreviewImage.src = e.target.result;
+                meetupPhotoPreview.style.display = 'block';
+            };
+            reader.readAsDataURL(compressedFile);
+        } catch (error) {
+            console.error('Error processing image:', error);
+            showError('Failed to process image');
+        }
+    });
+}
+
+if (removeMeetupPhotoBtn) {
+    removeMeetupPhotoBtn.addEventListener('click', () => {
+        selectedMeetupPhoto = null;
+        meetupPhotoInput.value = '';
+        meetupPhotoPreview.style.display = 'none';
+        meetupPreviewImage.src = '';
+    });
+}
+
+// Compress image before upload
+async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Max dimensions
+                const maxWidth = 1200;
+                const maxHeight = 1200;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = height * (maxWidth / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = width * (maxHeight / height);
+                        height = maxHeight;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        }));
+                    } else {
+                        reject(new Error('Canvas to Blob conversion failed'));
+                    }
+                }, 'image/jpeg', 0.8);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
 
 // Make initMap available globally for Google Maps callback
 window.initMap = initMap;

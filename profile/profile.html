@@ -89,6 +89,46 @@
                 <button class="add-tag-btn" id="addTagBtn" style="display: none;">+ Add Tag</button>
             </div>
 
+            <!-- Dietary Preferences -->
+            <div class="dietary-section">
+                <span class="label">Dietary Preferences:</span>
+                <div class="dietary-tags" id="dietaryTags"></div>
+                <div class="dietary-options" id="dietaryOptions" style="display: none;">
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="vegetarian">
+                        <span>🥗 Vegetarian</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="vegan">
+                        <span>🌱 Vegan</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="halal">
+                        <span>☪️ Halal</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="kosher">
+                        <span>✡️ Kosher</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="gluten-free">
+                        <span>🌾 Gluten-Free</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="dairy-free">
+                        <span>🥛 Dairy-Free</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="nut-allergy">
+                        <span>🥜 Nut Allergy</span>
+                    </label>
+                    <label class="dietary-checkbox">
+                        <input type="checkbox" value="pescatarian">
+                        <span>🐟 Pescatarian</span>
+                    </label>
+                </div>
+            </div>
+
             <!-- Fun Fact -->
             <div class="info-row">
                 <span class="label">Fun Fact:</span>
@@ -101,6 +141,19 @@
                 <span class="label">Last Meal on Earth:</span>
                 <span class="value" id="lastMealDisplay"></span>
                 <input type="text" class="edit-input" id="lastMealInput" value="" style="display: none;">
+            </div>
+
+            <!-- Ratings Section -->
+            <div class="ratings-section" style="margin-top: 25px; padding-top: 25px; border-top: 2px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                    <span class="label">User Rating:</span>
+                    <div id="averageRating" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 20px; color: #FFD700;">★</span>
+                        <span id="ratingValue" style="font-size: 18px; font-weight: 600;">--</span>
+                        <span id="ratingCount" style="font-size: 14px; color: #999;">(0 ratings)</span>
+                    </div>
+                </div>
+                <div id="recentReviews" style="max-height: 300px; overflow-y: auto;"></div>
             </div>
 
             <!-- Save/Cancel Buttons (hidden by default) -->
@@ -171,8 +224,9 @@
                 </div>
             </div>
 
-            <!-- Logout Button -->
-            <div class="logout-button-container">
+            <!-- Account Settings -->
+            <div class="account-settings">
+                <button class="change-password-btn" id="changePasswordBtn">Change Password</button>
                 <button class="logout-btn" id="logoutBtn">Logout</button>
             </div>
         </div>
@@ -233,6 +287,44 @@
             <div class="modal-buttons">
                 <button class="modal-btn cancel-btn" id="cancelLogoutBtn">Cancel</button>
                 <button class="modal-btn confirm-btn" id="confirmLogoutBtn">Log Out</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal" id="changePasswordModal">
+        <div class="modal-content">
+            <h2>Change Password</h2>
+            <div class="error-message" id="passwordChangeError" style="display: none; background: #ffebee; color: #c62828; padding: 10px; border-radius: 8px; margin-bottom: 1rem; font-size: 14px;"></div>
+            <div class="success-message" id="passwordChangeSuccess" style="display: none; background: #e8f5e9; color: #2e7d32; padding: 10px; border-radius: 8px; margin-bottom: 1rem; font-size: 14px;"></div>
+
+            <div style="margin: 1rem 0;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Current Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="currentPassword" placeholder="Enter current password" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; padding-right: 45px;">
+                    <span class="password-toggle" data-target="currentPassword" style="position: absolute; right: 12px; cursor: pointer; font-size: 18px; opacity: 0.6;">👁️</span>
+                </div>
+            </div>
+
+            <div style="margin: 1rem 0;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">New Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="newPassword" placeholder="Enter new password (min 8 characters)" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; padding-right: 45px;">
+                    <span class="password-toggle" data-target="newPassword" style="position: absolute; right: 12px; cursor: pointer; font-size: 18px; opacity: 0.6;">👁️</span>
+                </div>
+            </div>
+
+            <div style="margin: 1rem 0;">
+                <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Confirm New Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="confirmNewPassword" placeholder="Re-enter new password" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; padding-right: 45px;">
+                    <span class="password-toggle" data-target="confirmNewPassword" style="position: absolute; right: 12px; cursor: pointer; font-size: 18px; opacity: 0.6;">👁️</span>
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="modal-btn cancel-btn" id="cancelPasswordBtn">Cancel</button>
+                <button class="modal-btn confirm-btn" id="confirmPasswordBtn">Update Password</button>
             </div>
         </div>
     </div>

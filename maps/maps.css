@@ -494,6 +494,47 @@ nav a {
     75% { transform: translateX(5px); }
 }
 
+/* Dietary Checkboxes */
+.dietary-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.dietary-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.dietary-option:hover {
+    border-color: #A8E6CF;
+    background: #f8fff8;
+}
+
+.dietary-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.dietary-option input[type="checkbox"]:checked + span {
+    font-weight: 600;
+    color: #2d6a4f;
+}
+
+.dietary-option span {
+    color: #333;
+}
+
 .modal-buttons {
     margin-top: 2rem;
 }

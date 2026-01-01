@@ -182,6 +182,32 @@
     min-height: 80px;
 }
 
+/* Password Toggle */
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-input-wrapper input {
+    width: 100%;
+    padding-right: 45px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    cursor: pointer;
+    font-size: 18px;
+    user-select: none;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.password-toggle:hover {
+    opacity: 1;
+}
+
 /* Personality Tags */
 .personality-input-wrapper {
     display: flex;
