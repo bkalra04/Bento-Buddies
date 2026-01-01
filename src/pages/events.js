@@ -16,7 +16,7 @@ import {
     submitRating,
     getRateableAttendees
 } from '../services/rating.service.js';
-import { getUserProfile } from '../services/user.service.js';
+import { getUserProfile, saveMeetup, unsaveMeetup, isMeetupSaved } from '../services/user.service.js';
 import { notifyMeetupJoin } from '../services/notification.service.js';
 import { requireAuth } from '../services/auth.service.js';
 import { showError, showSuccess, showLoading, hideLoading } from '../utils/error-handler.js';
@@ -30,6 +30,7 @@ let unsubscribeGroupChat = null;
 let selectedGroupChatPhoto = null;
 let selectedRating = 0;
 let currentRatingUser = null;
+let userSavedMeetups = [];
 
 // Carousel state
 let todayScrollInterval;
@@ -48,11 +49,20 @@ const closeModal = document.getElementById('closeModal');
 async function init() {
     try {
         currentUser = await requireAuth();
+        await loadUserSavedMeetups();
         loadMeetups();
         setupEventListeners();
     } catch (error) {
         console.error('Auth error:', error);
         window.location.href = '../index/index.html';
+    }
+}
+
+// Load user's saved meetups
+async function loadUserSavedMeetups() {
+    const userResult = await getUserProfile(currentUser.uid);
+    if (userResult.success) {
+        userSavedMeetups = userResult.data.savedMeetups || [];
     }
 }
 
@@ -145,6 +155,18 @@ function createMeetupCard(meetup, originalIndex, carouselId) {
     imgElement.style.height = '100%';
     imgElement.style.objectFit = 'cover';
     imageContainer.appendChild(imgElement);
+
+    // Bookmark icon
+    const isSaved = userSavedMeetups.includes(meetup.id);
+    const bookmarkIcon = document.createElement('div');
+    bookmarkIcon.className = 'bookmark-icon';
+    bookmarkIcon.innerHTML = isSaved ? '❤️' : '🤍';
+    bookmarkIcon.title = isSaved ? 'Remove from favorites' : 'Add to favorites';
+    bookmarkIcon.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await toggleSaveMeetup(meetup.id, bookmarkIcon);
+    });
+    imageContainer.appendChild(bookmarkIcon);
 
     // Status badge
     let statusBadge = '';
@@ -663,6 +685,12 @@ function filterMeetupsByDietary(filter) {
         // Show all if filter is "all"
         if (filter === 'all') {
             card.style.display = 'block';
+            return;
+        }
+
+        // Show only saved meetups if filter is "saved"
+        if (filter === 'saved') {
+            card.style.display = userSavedMeetups.includes(meetupId) ? 'block' : 'none';
             return;
         }
 
@@ -1219,6 +1247,38 @@ document.getElementById('ratingModal').addEventListener('click', (e) => {
         currentRatingUser = null;
     }
 });
+
+// Toggle save/unsave meetup
+async function toggleSaveMeetup(meetupId, iconElement) {
+    const isSaved = userSavedMeetups.includes(meetupId);
+
+    try {
+        if (isSaved) {
+            const result = await unsaveMeetup(currentUser.uid, meetupId);
+            if (result.success) {
+                userSavedMeetups = userSavedMeetups.filter(id => id !== meetupId);
+                iconElement.innerHTML = '🤍';
+                iconElement.title = 'Add to favorites';
+                showSuccess('Removed from favorites');
+            } else {
+                showError(result.error || 'Failed to remove from favorites');
+            }
+        } else {
+            const result = await saveMeetup(currentUser.uid, meetupId);
+            if (result.success) {
+                userSavedMeetups.push(meetupId);
+                iconElement.innerHTML = '❤️';
+                iconElement.title = 'Remove from favorites';
+                showSuccess('Added to favorites');
+            } else {
+                showError(result.error || 'Failed to add to favorites');
+            }
+        }
+    } catch (error) {
+        console.error('Error toggling save:', error);
+        showError('Failed to update favorites');
+    }
+}
 
 // Cleanup
 window.addEventListener('beforeunload', () => {

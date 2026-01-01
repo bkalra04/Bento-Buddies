@@ -156,6 +156,11 @@ nav a {
     border-color: #FF93A9;
 }
 
+.dietary-filter-btn[data-filter="saved"].active {
+    background: linear-gradient(135deg, #FF6B9D, #FF1744);
+    border-color: #FF1744;
+}
+
 /* Events Section */
 .events-section {
     margin-bottom: 60px;
@@ -229,12 +234,28 @@ nav a {
     justify-content: center;
     gap: 10px;
     margin-bottom: 15px;
+    position: relative;
 }
 
 .event-image img {
     max-width: 100px;
     max-height: 100px;
     object-fit: contain;
+}
+
+.bookmark-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 10;
+    transition: transform 0.2s;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+}
+
+.bookmark-icon:hover {
+    transform: scale(1.2);
 }
 
 .event-info h3 {

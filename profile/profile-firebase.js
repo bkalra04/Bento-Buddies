@@ -1,6 +1,7 @@
 // Import Firebase modules
 import { auth, db, storage, onAuthStateChanged, signOut, doc, getDoc, updateDoc, ref, uploadBytes, getDownloadURL, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from '../firebase-config.js';
 import { getUserRatings } from '../src/services/rating.service.js';
+import { getUserMeetupHistory } from '../src/services/meetup.service.js';
 
 let profileData = {};
 let isEditing = false;
@@ -40,6 +41,9 @@ async function loadUserProfile(uid) {
 
             // Load ratings
             loadRatings(uid);
+
+            // Load meetup history
+            loadMeetupHistory(uid);
         } else {
             // No profile found - show message
             console.error('No profile found in Firestore for user:', uid);
@@ -761,5 +765,76 @@ async function loadRatings(userId) {
         });
     } catch (error) {
         console.error('Error loading ratings:', error);
+    }
+}
+
+// Load user meetup history
+async function loadMeetupHistory(userId) {
+    try {
+        const result = await getUserMeetupHistory(userId);
+
+        if (!result.success) {
+            console.error('Failed to load meetup history:', result.error);
+            return;
+        }
+
+        const meetups = result.data;
+        const meetupHistory = document.getElementById('meetupHistory');
+        meetupHistory.innerHTML = '';
+
+        if (meetups.length === 0) {
+            meetupHistory.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No past meetups yet. Join some meetups to build your history!</p>';
+            return;
+        }
+
+        // Show up to 10 most recent meetups
+        const displayMeetups = meetups.slice(0, 10);
+
+        displayMeetups.forEach(meetup => {
+            const date = new Date(meetup.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const attendeeCount = meetup.attendees.length;
+
+            const meetupCard = document.createElement('div');
+            meetupCard.style.cssText = 'padding: 15px; background: #f8f8f8; border-radius: 12px; display: flex; gap: 15px; cursor: pointer; transition: background 0.2s;';
+            meetupCard.onmouseover = () => meetupCard.style.background = '#ececec';
+            meetupCard.onmouseout = () => meetupCard.style.background = '#f8f8f8';
+
+            // Meetup photo
+            const photoHTML = meetup.userPhoto || meetup.restaurantPhoto
+                ? `<img src="${meetup.userPhoto || meetup.restaurantPhoto}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: cover;">`
+                : `<div style="width: 80px; height: 80px; border-radius: 8px; background: linear-gradient(135deg, #FFB3C6, #FF93A9); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">🍜</div>`;
+
+            // Attendees preview (first 3)
+            let attendeesHTML = '';
+            const previewAttendees = meetup.attendees.slice(0, 3);
+            previewAttendees.forEach((attendee, index) => {
+                const offset = index * -8;
+                attendeesHTML += attendee.picture
+                    ? `<img src="${attendee.picture}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid white; margin-left: ${offset}px;">`
+                    : `<div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600; border: 2px solid white; margin-left: ${offset}px;">${attendee.name.charAt(0)}</div>`;
+            });
+
+            if (attendeeCount > 3) {
+                attendeesHTML += `<div style="width: 32px; height: 32px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #666; border: 2px solid white; margin-left: -8px;">+${attendeeCount - 3}</div>`;
+            }
+
+            meetupCard.innerHTML = `
+                ${photoHTML}
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 5px 0; font-size: 16px;">${meetup.restaurantName}</h4>
+                    <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">${date} • ${meetup.time}</p>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex;">
+                            ${attendeesHTML}
+                        </div>
+                        <span style="font-size: 13px; color: #666;">${attendeeCount} attendee${attendeeCount !== 1 ? 's' : ''}</span>
+                    </div>
+                </div>
+            `;
+
+            meetupHistory.appendChild(meetupCard);
+        });
+    } catch (error) {
+        console.error('Error loading meetup history:', error);
     }
 }
