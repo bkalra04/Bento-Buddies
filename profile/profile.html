@@ -233,6 +233,57 @@
                 </div>
             </div>
 
+            <!-- Availability Calendar -->
+            <div class="availability-section" style="margin-top: 30px; padding-top: 30px; border-top: 2px solid #f0f0f0;">
+                <h3 style="margin-bottom: 20px; font-size: 20px; display: flex; align-items: center; gap: 10px;">
+                    <span>🗓️</span>
+                    <span>Meal Availability</span>
+                    <span style="font-size: 12px; color: #999; font-weight: 400;">(When are you typically free for meals?)</span>
+                </h3>
+                <div class="availability-grid">
+                    <!-- Days of week headers -->
+                    <div class="availability-header"></div>
+                    <div class="availability-header">Mon</div>
+                    <div class="availability-header">Tue</div>
+                    <div class="availability-header">Wed</div>
+                    <div class="availability-header">Thu</div>
+                    <div class="availability-header">Fri</div>
+                    <div class="availability-header">Sat</div>
+                    <div class="availability-header">Sun</div>
+
+                    <!-- Breakfast Row -->
+                    <div class="availability-time-label">🌅 Breakfast<br><span style="font-size: 11px; color: #999;">8-11am</span></div>
+                    <div class="availability-cell" data-day="mon" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="tue" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="wed" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="thu" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="fri" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="sat" data-time="breakfast"></div>
+                    <div class="availability-cell" data-day="sun" data-time="breakfast"></div>
+
+                    <!-- Lunch Row -->
+                    <div class="availability-time-label">☀️ Lunch<br><span style="font-size: 11px; color: #999;">11am-2pm</span></div>
+                    <div class="availability-cell" data-day="mon" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="tue" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="wed" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="thu" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="fri" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="sat" data-time="lunch"></div>
+                    <div class="availability-cell" data-day="sun" data-time="lunch"></div>
+
+                    <!-- Dinner Row -->
+                    <div class="availability-time-label">🌙 Dinner<br><span style="font-size: 11px; color: #999;">5-8pm</span></div>
+                    <div class="availability-cell" data-day="mon" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="tue" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="wed" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="thu" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="fri" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="sat" data-time="dinner"></div>
+                    <div class="availability-cell" data-day="sun" data-time="dinner"></div>
+                </div>
+                <p style="text-align: center; color: #999; font-size: 13px; margin-top: 15px;">Click cells to toggle your availability</p>
+            </div>
+
             <!-- Account Settings -->
             <div class="account-settings">
                 <button class="change-password-btn" id="changePasswordBtn">Change Password</button>

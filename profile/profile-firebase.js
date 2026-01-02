@@ -838,3 +838,53 @@ async function loadMeetupHistory(userId) {
         console.error('Error loading meetup history:', error);
     }
 }
+
+// Load and manage availability calendar
+async function loadAvailabilityCalendar(userId) {
+    try {
+        const userResult = await getUserProfile(userId);
+        if (!userResult.success) return;
+
+        const availability = userResult.data.availability || {};
+
+        // Set up click handlers for availability cells
+        const cells = document.querySelectorAll('.availability-cell');
+        cells.forEach(cell => {
+            const day = cell.dataset.day;
+            const time = cell.dataset.time;
+            const key = `${day}-${time}`;
+
+            // Set initial state from saved data
+            if (availability[key]) {
+                cell.classList.add('available');
+            }
+
+            // Click handler to toggle availability
+            cell.addEventListener('click', async () => {
+                const isAvailable = cell.classList.contains('available');
+                
+                if (isAvailable) {
+                    cell.classList.remove('available');
+                    delete availability[key];
+                } else {
+                    cell.classList.add('available');
+                    availability[key] = true;
+                }
+
+                // Save to Firestore
+                try {
+                    await updateUserProfile(userId, { availability });
+                } catch (error) {
+                    console.error('Error saving availability:', error);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Error loading availability:', error);
+    }
+}
+
+// Initialize availability calendar on profile load
+if (uid) {
+    loadAvailabilityCalendar(uid);
+}

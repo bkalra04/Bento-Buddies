@@ -1225,3 +1225,61 @@ nav a {
         text-align: center;
     }
 }
+
+/* Availability Grid */
+.availability-grid {
+    display: grid;
+    grid-template-columns: 120px repeat(7, 1fr);
+    gap: 8px;
+    margin: 20px 0;
+}
+
+.availability-header {
+    font-weight: 600;
+    text-align: center;
+    padding: 10px;
+    color: #333;
+    font-size: 14px;
+}
+
+.availability-time-label {
+    font-weight: 600;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: #333;
+    font-size: 13px;
+}
+
+.availability-cell {
+    aspect-ratio: 1;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+}
+
+.availability-cell:hover {
+    border-color: #FFB3C6;
+    transform: scale(1.05);
+}
+
+.availability-cell.available {
+    background: linear-gradient(135deg, #A8E6CF, #7BDCB5);
+    border-color: #A8E6CF;
+}
+
+.availability-cell.available::after {
+    content: '✓';
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    font-size: 24px;
+    color: white;
+    font-weight: bold;
+}
