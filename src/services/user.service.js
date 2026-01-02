@@ -126,3 +126,79 @@ export async function getAllUsers() {
         return handleError(error, 'Failed to get all users');
     }
 }
+
+/**
+ * Save a meetup to user's favorites
+ */
+export async function saveMeetup(userId, meetupId) {
+    try {
+        const userResult = await getUserProfile(userId);
+        if (!userResult.success) {
+            return userResult;
+        }
+
+        const userData = userResult.data;
+        const savedMeetups = userData.savedMeetups || [];
+
+        // Check if already saved
+        if (savedMeetups.includes(meetupId)) {
+            return { success: false, error: 'Meetup already saved' };
+        }
+
+        // Add to saved meetups
+        savedMeetups.push(meetupId);
+
+        await updateDoc(doc(db, 'users', userId), {
+            savedMeetups,
+            updatedAt: new Date()
+        });
+
+        return { success: true };
+    } catch (error) {
+        return handleError(error, 'Failed to save meetup');
+    }
+}
+
+/**
+ * Remove a meetup from user's favorites
+ */
+export async function unsaveMeetup(userId, meetupId) {
+    try {
+        const userResult = await getUserProfile(userId);
+        if (!userResult.success) {
+            return userResult;
+        }
+
+        const userData = userResult.data;
+        const savedMeetups = userData.savedMeetups || [];
+
+        // Remove from saved meetups
+        const updatedSavedMeetups = savedMeetups.filter(id => id !== meetupId);
+
+        await updateDoc(doc(db, 'users', userId), {
+            savedMeetups: updatedSavedMeetups,
+            updatedAt: new Date()
+        });
+
+        return { success: true };
+    } catch (error) {
+        return handleError(error, 'Failed to unsave meetup');
+    }
+}
+
+/**
+ * Check if a meetup is saved by user
+ */
+export async function isMeetupSaved(userId, meetupId) {
+    try {
+        const userResult = await getUserProfile(userId);
+        if (!userResult.success) {
+            return { success: false, isSaved: false };
+        }
+
+        const savedMeetups = userResult.data.savedMeetups || [];
+        return { success: true, isSaved: savedMeetups.includes(meetupId) };
+    } catch (error) {
+        return handleError(error, 'Failed to check saved status');
+    }
+}

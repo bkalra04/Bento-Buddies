@@ -337,6 +337,57 @@ nav a {
     background-color: #FF9BB3;
 }
 
+/* Photo Preview */
+.photo-preview {
+    position: relative;
+    padding: 10px 20px;
+    background: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+}
+
+.photo-preview img {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+    display: block;
+}
+
+.remove-photo-btn {
+    position: absolute;
+    top: 15px;
+    right: 25px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.remove-photo-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* Message Photos */
+.message-photo {
+    max-width: 300px;
+    border-radius: 12px;
+    margin-top: 8px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.message-photo:hover {
+    transform: scale(1.02);
+}
+
 .contact-list::-webkit-scrollbar,
 .messages-area::-webkit-scrollbar {
     width: 6px;

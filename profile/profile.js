@@ -9,7 +9,8 @@ let profileData = JSON.parse(localStorage.getItem('userProfile')) || {
     funFact: 'Have never tried bubble tea',
     lastMeal: 'Carbonara',
     favoriteFoods: ['ramen', 'rice', 'taco'],
-    profilePicture: null
+    profilePicture: null,
+    dietaryPreferences: [] // vegetarian, vegan, halal, kosher, gluten-free, dairy-free, nut-allergy, pescatarian
 };
 
 let isEditing = false;
@@ -41,7 +42,10 @@ function loadProfileData() {
     
     // Load personality tags
     loadTags();
-    
+
+    // Load dietary preferences
+    loadDietaryPreferences();
+
     // Load favorite foods
     loadFavoriteFoods();
 }
@@ -50,19 +54,63 @@ function loadProfileData() {
 function loadTags() {
     const container = document.getElementById('tagsContainer');
     container.innerHTML = '';
-    
+
     profileData.personality.forEach(tag => {
         const tagElement = document.createElement('span');
         tagElement.className = 'tag';
         tagElement.textContent = tag;
-        
+
         if (isEditing) {
             tagElement.classList.add('editable');
             tagElement.addEventListener('click', () => removeTag(tag));
         }
-        
+
         container.appendChild(tagElement);
     });
+}
+
+// Load dietary preferences
+function loadDietaryPreferences() {
+    const dietaryTags = document.getElementById('dietaryTags');
+    const dietaryOptions = document.getElementById('dietaryOptions');
+
+    // Ensure dietary preferences exist
+    if (!profileData.dietaryPreferences) {
+        profileData.dietaryPreferences = [];
+    }
+
+    // Map dietary values to display text with emojis
+    const dietaryLabels = {
+        'vegetarian': '🥗 Vegetarian',
+        'vegan': '🌱 Vegan',
+        'halal': '☪️ Halal',
+        'kosher': '✡️ Kosher',
+        'gluten-free': '🌾 Gluten-Free',
+        'dairy-free': '🥛 Dairy-Free',
+        'nut-allergy': '🥜 Nut Allergy',
+        'pescatarian': '🐟 Pescatarian'
+    };
+
+    // Display dietary tags
+    dietaryTags.innerHTML = '';
+    if (profileData.dietaryPreferences.length > 0) {
+        profileData.dietaryPreferences.forEach(pref => {
+            const tag = document.createElement('span');
+            tag.className = 'dietary-tag';
+            tag.textContent = dietaryLabels[pref] || pref;
+            dietaryTags.appendChild(tag);
+        });
+    } else {
+        dietaryTags.innerHTML = '<span style="color: #999; font-size: 16px;">No dietary preferences set</span>';
+    }
+
+    // Update checkboxes when in edit mode
+    if (isEditing) {
+        const checkboxes = dietaryOptions.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = profileData.dietaryPreferences.includes(checkbox.value);
+        });
+    }
 }
 
 // Load favorite foods
@@ -157,7 +205,11 @@ function toggleEdit() {
         // Make tags editable
         loadTags();
         document.getElementById('addTagBtn').style.display = 'inline-block';
-        
+
+        // Show dietary options for editing
+        document.getElementById('dietaryOptions').style.display = 'grid';
+        loadDietaryPreferences();
+
         // Make food items clickable (visual indication)
         document.querySelectorAll('.food-item').forEach(item => {
             item.style.cursor = 'pointer';
@@ -203,7 +255,14 @@ function saveProfile() {
     profileData.bio = document.getElementById('bioInput').value;
     profileData.funFact = document.getElementById('funFactInput').value;
     profileData.lastMeal = document.getElementById('lastMealInput').value;
-    
+
+    // Save dietary preferences
+    const checkedDietary = [];
+    document.querySelectorAll('#dietaryOptions input[type="checkbox"]:checked').forEach(checkbox => {
+        checkedDietary.push(checkbox.value);
+    });
+    profileData.dietaryPreferences = checkedDietary;
+
     // Save to localStorage
     localStorage.setItem('userProfile', JSON.stringify(profileData));
     
@@ -213,6 +272,7 @@ function saveProfile() {
     document.getElementById('editBtn').style.color = '#FF93A9';
     document.getElementById('actionButtons').style.display = 'none';
     document.getElementById('addTagBtn').style.display = 'none';
+    document.getElementById('dietaryOptions').style.display = 'none';
     
     // Hide inputs, show displays
     hideInput('name');
@@ -239,6 +299,7 @@ function cancelEdit() {
     document.getElementById('editBtn').style.color = '#FF93A9';
     document.getElementById('actionButtons').style.display = 'none';
     document.getElementById('addTagBtn').style.display = 'none';
+    document.getElementById('dietaryOptions').style.display = 'none';
     
     // Hide inputs, show displays
     hideInput('name');

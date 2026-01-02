@@ -34,15 +34,22 @@ service cloud.firestore {
     }
 
     // CONVERSATIONS COLLECTION
-    // Only the two participants can read/write their conversation
+    // All signed-in users can list conversations (for real-time listeners)
+    // But can only read/write their own conversations
     match /conversations/{conversationId} {
-      allow read, write: if isSignedIn() &&
-                            request.auth.uid in resource.data.participants;
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() &&
+                    request.auth.uid in resource.data.participants;
       allow create: if isSignedIn() &&
                        request.auth.uid in request.resource.data.participants;
+      allow update: if isSignedIn() &&
+                       request.auth.uid in resource.data.participants;
+      allow delete: if isSignedIn() &&
+                       request.auth.uid in resource.data.participants;
 
       // Messages subcollection
       match /messages/{messageId} {
+        allow list: if isSignedIn();
         allow read, write: if isSignedIn() &&
           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
       }

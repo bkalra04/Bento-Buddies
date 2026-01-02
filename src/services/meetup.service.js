@@ -318,3 +318,69 @@ export async function getUserMeetups(userId) {
         return handleError(error, 'Failed to get user meetups');
     }
 }
+
+/**
+ * Get user's past meetup history (already happened)
+ */
+export async function getUserMeetupHistory(userId) {
+    try {
+        // Get all user's meetups
+        const userMeetupsResult = await getUserMeetups(userId);
+
+        if (!userMeetupsResult.success) {
+            return userMeetupsResult;
+        }
+
+        // Filter for past meetups only
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const pastMeetups = userMeetupsResult.data.filter(meetup => {
+            const meetupDate = new Date(meetup.date);
+            return meetupDate < today;
+        });
+
+        // Sort by date (most recent first)
+        pastMeetups.sort((a, b) => {
+            const dateA = new Date(a.date);
+            const dateB = new Date(b.date);
+            return dateB - dateA;
+        });
+
+        return { success: true, data: pastMeetups };
+    } catch (error) {
+        return handleError(error, 'Failed to get meetup history');
+    }
+}
+
+/**
+ * Get user's saved/favorite meetups
+ */
+export async function getSavedMeetups(userId, savedMeetupIds) {
+    try {
+        if (!savedMeetupIds || savedMeetupIds.length === 0) {
+            return { success: true, data: [] };
+        }
+
+        // Get all meetup details for saved IDs
+        const meetupPromises = savedMeetupIds.map(id => getMeetup(id));
+        const results = await Promise.all(meetupPromises);
+
+        // Filter successful results
+        const meetups = results
+            .filter(result => result.success)
+            .map(result => result.data);
+
+        // Sort by date
+        meetups.sort((a, b) => {
+            if (a.date === b.date) {
+                return a.time > b.time ? 1 : -1;
+            }
+            return a.date > b.date ? 1 : -1;
+        });
+
+        return { success: true, data: meetups };
+    } catch (error) {
+        return handleError(error, 'Failed to get saved meetups');
+    }
+}

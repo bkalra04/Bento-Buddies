@@ -1,5 +1,7 @@
 // Import Firebase modules
-import { auth, db, storage, onAuthStateChanged, signOut, doc, getDoc, updateDoc, ref, uploadBytes, getDownloadURL } from '../firebase-config.js';
+import { auth, db, storage, onAuthStateChanged, signOut, doc, getDoc, updateDoc, ref, uploadBytes, getDownloadURL, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from '../firebase-config.js';
+import { getUserRatings } from '../src/services/rating.service.js';
+import { getUserMeetupHistory } from '../src/services/meetup.service.js';
 
 let profileData = {};
 let isEditing = false;
@@ -36,6 +38,12 @@ async function loadUserProfile(uid) {
 
             // NOW load the data into the UI (only after we have it!)
             loadProfileData();
+
+            // Load ratings
+            loadRatings(uid);
+
+            // Load meetup history
+            loadMeetupHistory(uid);
         } else {
             // No profile found - show message
             console.error('No profile found in Firestore for user:', uid);
@@ -201,6 +209,59 @@ function setupEventListeners() {
             }
         });
     }
+
+    // Change Password Modal
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const cancelPasswordBtn = document.getElementById('cancelPasswordBtn');
+    const confirmPasswordBtn = document.getElementById('confirmPasswordBtn');
+
+    if (changePasswordBtn) {
+        changePasswordBtn.addEventListener('click', () => {
+            changePasswordModal.classList.add('active');
+            // Clear previous inputs and messages
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmNewPassword').value = '';
+            document.getElementById('passwordChangeError').style.display = 'none';
+            document.getElementById('passwordChangeSuccess').style.display = 'none';
+        });
+    }
+
+    if (cancelPasswordBtn) {
+        cancelPasswordBtn.addEventListener('click', () => {
+            changePasswordModal.classList.remove('active');
+        });
+    }
+
+    if (confirmPasswordBtn) {
+        confirmPasswordBtn.addEventListener('click', handlePasswordChange);
+    }
+
+    // Close password modal when clicking outside
+    if (changePasswordModal) {
+        changePasswordModal.addEventListener('click', (e) => {
+            if (e.target === changePasswordModal) {
+                changePasswordModal.classList.remove('active');
+            }
+        });
+    }
+
+    // Password toggle functionality for profile modals
+    document.querySelectorAll('.password-toggle').forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const targetId = toggle.dataset.target;
+            const input = document.getElementById(targetId);
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = '👁️‍🗨️';
+            } else {
+                input.type = 'password';
+                toggle.textContent = '👁️';
+            }
+        });
+    });
 }
 
 // Toggle edit mode
@@ -474,6 +535,90 @@ async function handleLogout() {
     }
 }
 
+// Handle password change
+async function handlePasswordChange() {
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+    const errorDiv = document.getElementById('passwordChangeError');
+    const successDiv = document.getElementById('passwordChangeSuccess');
+
+    // Hide previous messages
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+        errorDiv.textContent = 'Please fill in all fields';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (newPassword.length < 8) {
+        errorDiv.textContent = 'New password must be at least 8 characters';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+        errorDiv.textContent = 'New passwords do not match';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    try {
+        // Disable button during processing
+        const confirmBtn = document.getElementById('confirmPasswordBtn');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Updating...';
+
+        // Re-authenticate user with current password
+        const credential = EmailAuthProvider.credential(
+            currentUser.email,
+            currentPassword
+        );
+        await reauthenticateWithCredential(currentUser, credential);
+
+        // Update password
+        await updatePassword(currentUser, newPassword);
+
+        // Show success message
+        successDiv.textContent = 'Password updated successfully!';
+        successDiv.style.display = 'block';
+
+        // Clear inputs
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmNewPassword').value = '';
+
+        // Close modal after 2 seconds
+        setTimeout(() => {
+            document.getElementById('changePasswordModal').classList.remove('active');
+            successDiv.style.display = 'none';
+        }, 2000);
+
+    } catch (error) {
+        console.error('Error changing password:', error);
+
+        let errorMessage = 'Failed to change password';
+        if (error.code === 'auth/wrong-password') {
+            errorMessage = 'Current password is incorrect';
+        } else if (error.code === 'auth/weak-password') {
+            errorMessage = 'New password is too weak';
+        } else if (error.code === 'auth/requires-recent-login') {
+            errorMessage = 'Please log out and log back in before changing your password';
+        }
+
+        errorDiv.textContent = errorMessage;
+        errorDiv.style.display = 'block';
+    } finally {
+        // Re-enable button
+        const confirmBtn = document.getElementById('confirmPasswordBtn');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Update Password';
+    }
+}
+
 /* ========================================
    CALENDAR FUNCTIONALITY
    ======================================== */
@@ -556,4 +701,190 @@ document.getElementById('nextMonth')?.addEventListener('click', () => {
 // Initialize calendar on page load
 if (document.getElementById('calendarDays')) {
     renderCalendar();
+}
+
+// Load user ratings
+async function loadRatings(userId) {
+    try {
+        const result = await getUserRatings(userId);
+
+        if (!result.success) {
+            console.error('Failed to load ratings:', result.error);
+            return;
+        }
+
+        const ratings = result.data;
+
+        // Update average rating display
+        const averageRating = profileData.averageRating || 0;
+        const totalRatings = profileData.totalRatings || 0;
+
+        document.getElementById('ratingValue').textContent = averageRating > 0 ? averageRating.toFixed(1) : '--';
+        document.getElementById('ratingCount').textContent = `(${totalRatings} rating${totalRatings !== 1 ? 's' : ''})`;
+
+        // Display recent reviews
+        const recentReviews = document.getElementById('recentReviews');
+        recentReviews.innerHTML = '';
+
+        if (ratings.length === 0) {
+            recentReviews.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No reviews yet</p>';
+            return;
+        }
+
+        // Show up to 5 most recent reviews with text
+        const reviewsWithText = ratings.filter(r => r.review && r.review.trim() !== '');
+        const displayReviews = reviewsWithText.slice(0, 5);
+
+        if (displayReviews.length === 0) {
+            recentReviews.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No written reviews yet</p>';
+            return;
+        }
+
+        displayReviews.forEach(rating => {
+            const stars = '★'.repeat(rating.rating) + '☆'.repeat(5 - rating.rating);
+            const date = rating.timestamp ? new Date(rating.timestamp.toDate()).toLocaleDateString() : '';
+
+            const reviewDiv = document.createElement('div');
+            reviewDiv.style.cssText = 'padding: 15px; background: #f8f8f8; border-radius: 12px; margin-bottom: 12px;';
+            reviewDiv.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        ${rating.fromUserPicture
+                            ? `<img src="${rating.fromUserPicture}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">`
+                            : '<div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: 600;">?</div>'
+                        }
+                        <strong>${rating.fromUserName}</strong>
+                    </div>
+                    <span style="color: #FFD700; font-size: 14px;">${stars}</span>
+                </div>
+                <p style="margin: 0; color: #666; font-size: 14px;">"${rating.review}"</p>
+                <p style="margin: 8px 0 0 0; color: #999; font-size: 12px;">From ${rating.meetupName} • ${date}</p>
+            `;
+
+            recentReviews.appendChild(reviewDiv);
+        });
+    } catch (error) {
+        console.error('Error loading ratings:', error);
+    }
+}
+
+// Load user meetup history
+async function loadMeetupHistory(userId) {
+    try {
+        const result = await getUserMeetupHistory(userId);
+
+        if (!result.success) {
+            console.error('Failed to load meetup history:', result.error);
+            return;
+        }
+
+        const meetups = result.data;
+        const meetupHistory = document.getElementById('meetupHistory');
+        meetupHistory.innerHTML = '';
+
+        if (meetups.length === 0) {
+            meetupHistory.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No past meetups yet. Join some meetups to build your history!</p>';
+            return;
+        }
+
+        // Show up to 10 most recent meetups
+        const displayMeetups = meetups.slice(0, 10);
+
+        displayMeetups.forEach(meetup => {
+            const date = new Date(meetup.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const attendeeCount = meetup.attendees.length;
+
+            const meetupCard = document.createElement('div');
+            meetupCard.style.cssText = 'padding: 15px; background: #f8f8f8; border-radius: 12px; display: flex; gap: 15px; cursor: pointer; transition: background 0.2s;';
+            meetupCard.onmouseover = () => meetupCard.style.background = '#ececec';
+            meetupCard.onmouseout = () => meetupCard.style.background = '#f8f8f8';
+
+            // Meetup photo
+            const photoHTML = meetup.userPhoto || meetup.restaurantPhoto
+                ? `<img src="${meetup.userPhoto || meetup.restaurantPhoto}" style="width: 80px; height: 80px; border-radius: 8px; object-fit: cover;">`
+                : `<div style="width: 80px; height: 80px; border-radius: 8px; background: linear-gradient(135deg, #FFB3C6, #FF93A9); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px;">🍜</div>`;
+
+            // Attendees preview (first 3)
+            let attendeesHTML = '';
+            const previewAttendees = meetup.attendees.slice(0, 3);
+            previewAttendees.forEach((attendee, index) => {
+                const offset = index * -8;
+                attendeesHTML += attendee.picture
+                    ? `<img src="${attendee.picture}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid white; margin-left: ${offset}px;">`
+                    : `<div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 600; border: 2px solid white; margin-left: ${offset}px;">${attendee.name.charAt(0)}</div>`;
+            });
+
+            if (attendeeCount > 3) {
+                attendeesHTML += `<div style="width: 32px; height: 32px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #666; border: 2px solid white; margin-left: -8px;">+${attendeeCount - 3}</div>`;
+            }
+
+            meetupCard.innerHTML = `
+                ${photoHTML}
+                <div style="flex: 1;">
+                    <h4 style="margin: 0 0 5px 0; font-size: 16px;">${meetup.restaurantName}</h4>
+                    <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">${date} • ${meetup.time}</p>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex;">
+                            ${attendeesHTML}
+                        </div>
+                        <span style="font-size: 13px; color: #666;">${attendeeCount} attendee${attendeeCount !== 1 ? 's' : ''}</span>
+                    </div>
+                </div>
+            `;
+
+            meetupHistory.appendChild(meetupCard);
+        });
+    } catch (error) {
+        console.error('Error loading meetup history:', error);
+    }
+}
+
+// Load and manage availability calendar
+async function loadAvailabilityCalendar(userId) {
+    try {
+        const userResult = await getUserProfile(userId);
+        if (!userResult.success) return;
+
+        const availability = userResult.data.availability || {};
+
+        // Set up click handlers for availability cells
+        const cells = document.querySelectorAll('.availability-cell');
+        cells.forEach(cell => {
+            const day = cell.dataset.day;
+            const time = cell.dataset.time;
+            const key = `${day}-${time}`;
+
+            // Set initial state from saved data
+            if (availability[key]) {
+                cell.classList.add('available');
+            }
+
+            // Click handler to toggle availability
+            cell.addEventListener('click', async () => {
+                const isAvailable = cell.classList.contains('available');
+                
+                if (isAvailable) {
+                    cell.classList.remove('available');
+                    delete availability[key];
+                } else {
+                    cell.classList.add('available');
+                    availability[key] = true;
+                }
+
+                // Save to Firestore
+                try {
+                    await updateUserProfile(userId, { availability });
+                } catch (error) {
+                    console.error('Error saving availability:', error);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Error loading availability:', error);
+    }
+}
+
+// Initialize availability calendar on profile load
+if (uid) {
+    loadAvailabilityCalendar(uid);
 }

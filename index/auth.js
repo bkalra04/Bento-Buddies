@@ -1,5 +1,5 @@
 // Import Firebase modules
-import { auth, db, storage, googleProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, doc, setDoc, getDoc, ref, uploadBytes, getDownloadURL } from '../firebase-config.js';
+import { auth, db, storage, googleProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged, sendPasswordResetEmail, doc, setDoc, getDoc, ref, uploadBytes, getDownloadURL } from '../firebase-config.js';
 import { collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // DOM Elements
@@ -592,4 +592,117 @@ function getErrorMessage(errorCode) {
     };
 
     return errorMessages[errorCode] || 'An error occurred. Please try again.';
+}
+
+// Password Visibility Toggle
+document.querySelectorAll('.password-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+        const targetId = toggle.dataset.target;
+        const input = document.getElementById(targetId);
+
+        if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '👁️‍🗨️'; // Eye with speech bubble (closed eye)
+        } else {
+            input.type = 'password';
+            toggle.textContent = '👁️'; // Eye (open eye)
+        }
+    });
+});
+
+// Forgot Password Modal
+const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+const cancelResetBtn = document.getElementById('cancelResetBtn');
+const sendResetBtn = document.getElementById('sendResetBtn');
+const resetEmail = document.getElementById('resetEmail');
+const forgotPasswordError = document.getElementById('forgotPasswordError');
+const forgotPasswordSuccess = document.getElementById('forgotPasswordSuccess');
+
+// Open forgot password modal
+if (forgotPasswordLink) {
+    forgotPasswordLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        loginModal.classList.remove('active');
+        forgotPasswordModal.classList.add('active');
+        resetEmail.value = '';
+        forgotPasswordError.classList.remove('show');
+        forgotPasswordSuccess.style.display = 'none';
+    });
+}
+
+// Cancel forgot password
+if (cancelResetBtn) {
+    cancelResetBtn.addEventListener('click', () => {
+        forgotPasswordModal.classList.remove('active');
+        loginModal.classList.add('active');
+    });
+}
+
+// Send password reset email
+if (sendResetBtn) {
+    sendResetBtn.addEventListener('click', async () => {
+        const email = resetEmail.value.trim();
+
+        // Hide previous messages
+        forgotPasswordError.classList.remove('show');
+        forgotPasswordSuccess.style.display = 'none';
+
+        if (!email) {
+            showError(forgotPasswordError, 'Please enter your email address');
+            return;
+        }
+
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            showError(forgotPasswordError, 'Please enter a valid email address');
+            return;
+        }
+
+        try {
+            sendResetBtn.disabled = true;
+            sendResetBtn.textContent = 'Sending...';
+
+            await sendPasswordResetEmail(auth, email);
+
+            // Show success message
+            forgotPasswordSuccess.textContent = 'Password reset email sent! Check your inbox and spam folder.';
+            forgotPasswordSuccess.style.display = 'block';
+            resetEmail.value = '';
+
+            // Close modal after 3 seconds
+            setTimeout(() => {
+                forgotPasswordModal.classList.remove('active');
+                loginModal.classList.add('active');
+                forgotPasswordSuccess.style.display = 'none';
+            }, 3000);
+
+        } catch (error) {
+            console.error('Password reset error:', error);
+
+            let errorMessage = 'Failed to send reset email';
+            if (error.code === 'auth/user-not-found') {
+                errorMessage = 'No account found with this email address';
+            } else if (error.code === 'auth/invalid-email') {
+                errorMessage = 'Invalid email address';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many requests. Please try again later';
+            }
+
+            showError(forgotPasswordError, errorMessage);
+        } finally {
+            sendResetBtn.disabled = false;
+            sendResetBtn.textContent = 'Send Reset Link';
+        }
+    });
+}
+
+// Close modal when clicking outside
+if (forgotPasswordModal) {
+    forgotPasswordModal.addEventListener('click', (e) => {
+        if (e.target === forgotPasswordModal) {
+            forgotPasswordModal.classList.remove('active');
+        }
+    });
 }

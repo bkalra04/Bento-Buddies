@@ -73,17 +73,22 @@ export async function getOrCreateConversation(userId1, userId2) {
  */
 export async function getUserConversations(userId) {
     try {
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', userId),
-            orderBy('lastMessageTime', 'desc')
-        );
+        // Get all conversations and filter in JS to avoid index requirements
+        const snapshot = await getDocs(collection(db, 'conversations'));
 
-        const snapshot = await getDocs(q);
-        const conversations = [];
-
+        let conversations = [];
         snapshot.forEach(docSnap => {
-            conversations.push({ id: docSnap.id, ...docSnap.data() });
+            const data = docSnap.data();
+            if (data.participants && data.participants.includes(userId)) {
+                conversations.push({ id: docSnap.id, ...data });
+            }
+        });
+
+        // Sort by lastMessageTime in JavaScript
+        conversations.sort((a, b) => {
+            const timeA = a.lastMessageTime?.toMillis?.() || 0;
+            const timeB = b.lastMessageTime?.toMillis?.() || 0;
+            return timeB - timeA; // desc order
         });
 
         return { success: true, data: conversations };
@@ -97,17 +102,23 @@ export async function getUserConversations(userId) {
  */
 export function onConversationsChange(userId, callback) {
     try {
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', userId),
-            orderBy('lastMessageTime', 'desc')
-        );
-
-        return onSnapshot(q, (snapshot) => {
-            const conversations = [];
+        // Listen to all conversations and filter in JS to avoid index requirements
+        return onSnapshot(collection(db, 'conversations'), (snapshot) => {
+            let conversations = [];
             snapshot.forEach(docSnap => {
-                conversations.push({ id: docSnap.id, ...docSnap.data() });
+                const data = docSnap.data();
+                if (data.participants && data.participants.includes(userId)) {
+                    conversations.push({ id: docSnap.id, ...data });
+                }
             });
+
+            // Sort by lastMessageTime in JavaScript
+            conversations.sort((a, b) => {
+                const timeA = a.lastMessageTime?.toMillis?.() || 0;
+                const timeB = b.lastMessageTime?.toMillis?.() || 0;
+                return timeB - timeA; // desc order
+            });
+
             callback(conversations);
         });
     } catch (error) {
@@ -119,7 +130,7 @@ export function onConversationsChange(userId, callback) {
 /**
  * Send a message
  */
-export async function sendMessage(conversationId, senderId, senderName, text, type = 'text') {
+export async function sendMessage(conversationId, senderId, senderName, text, type = 'text', photoURL = null) {
     try {
         const messageData = {
             senderId,
@@ -129,6 +140,11 @@ export async function sendMessage(conversationId, senderId, senderName, text, ty
             timestamp: new Date(),
             read: false
         };
+
+        // Add photo URL if provided
+        if (photoURL) {
+            messageData.photoURL = photoURL;
+        }
 
         await addDoc(collection(db, 'conversations', conversationId, 'messages'), messageData);
 
@@ -157,16 +173,20 @@ export async function sendMessage(conversationId, senderId, senderName, text, ty
  */
 export async function getMessages(conversationId) {
     try {
-        const q = query(
-            collection(db, 'conversations', conversationId, 'messages'),
-            orderBy('timestamp', 'asc')
+        const snapshot = await getDocs(
+            collection(db, 'conversations', conversationId, 'messages')
         );
 
-        const snapshot = await getDocs(q);
         const messages = [];
-
         snapshot.forEach(docSnap => {
             messages.push({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        // Sort by timestamp in JavaScript
+        messages.sort((a, b) => {
+            const timeA = a.timestamp?.toMillis?.() || 0;
+            const timeB = b.timestamp?.toMillis?.() || 0;
+            return timeA - timeB; // asc order
         });
 
         return { success: true, data: messages };
@@ -180,18 +200,24 @@ export async function getMessages(conversationId) {
  */
 export function onMessagesChange(conversationId, callback) {
     try {
-        const q = query(
+        return onSnapshot(
             collection(db, 'conversations', conversationId, 'messages'),
-            orderBy('timestamp', 'asc')
-        );
+            (snapshot) => {
+                const messages = [];
+                snapshot.forEach(docSnap => {
+                    messages.push({ id: docSnap.id, ...docSnap.data() });
+                });
 
-        return onSnapshot(q, (snapshot) => {
-            const messages = [];
-            snapshot.forEach(docSnap => {
-                messages.push({ id: docSnap.id, ...docSnap.data() });
-            });
-            callback(messages);
-        });
+                // Sort by timestamp in JavaScript
+                messages.sort((a, b) => {
+                    const timeA = a.timestamp?.toMillis?.() || 0;
+                    const timeB = b.timestamp?.toMillis?.() || 0;
+                    return timeA - timeB; // asc order
+                });
+
+                callback(messages);
+            }
+        );
     } catch (error) {
         console.error('Error listening to messages:', error);
         return () => {};
@@ -233,5 +259,83 @@ export async function searchConversations(userId, searchTerm) {
         return { success: true, data: filtered };
     } catch (error) {
         return handleError(error, 'Failed to search conversations');
+    }
+}
+
+/**
+ * Send a group chat message
+ */
+export async function sendGroupMessage(meetupId, senderId, senderName, senderPicture, text, photoURL = null) {
+    try {
+        const messageData = {
+            senderId,
+            senderName,
+            senderPicture: senderPicture || '',
+            text: text.trim(),
+            timestamp: new Date(),
+            photoURL: photoURL || null
+        };
+
+        await addDoc(collection(db, 'meetups', meetupId, 'groupChat'), messageData);
+
+        return { success: true };
+    } catch (error) {
+        return handleError(error, 'Failed to send group message');
+    }
+}
+
+/**
+ * Get group chat messages for a meetup
+ */
+export async function getGroupMessages(meetupId) {
+    try {
+        const snapshot = await getDocs(
+            collection(db, 'meetups', meetupId, 'groupChat')
+        );
+
+        const messages = [];
+        snapshot.forEach(docSnap => {
+            messages.push({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        // Sort by timestamp
+        messages.sort((a, b) => {
+            const timeA = a.timestamp?.toMillis?.() || 0;
+            const timeB = b.timestamp?.toMillis?.() || 0;
+            return timeA - timeB; // asc order
+        });
+
+        return { success: true, data: messages };
+    } catch (error) {
+        return handleError(error, 'Failed to get group messages');
+    }
+}
+
+/**
+ * Listen to group chat messages in real-time
+ */
+export function onGroupMessagesChange(meetupId, callback) {
+    try {
+        return onSnapshot(
+            collection(db, 'meetups', meetupId, 'groupChat'),
+            (snapshot) => {
+                const messages = [];
+                snapshot.forEach(docSnap => {
+                    messages.push({ id: docSnap.id, ...docSnap.data() });
+                });
+
+                // Sort by timestamp
+                messages.sort((a, b) => {
+                    const timeA = a.timestamp?.toMillis?.() || 0;
+                    const timeB = b.timestamp?.toMillis?.() || 0;
+                    return timeA - timeB; // asc order
+                });
+
+                callback(messages);
+            }
+        );
+    } catch (error) {
+        console.error('Error listening to group messages:', error);
+        return () => {};
     }
 }
